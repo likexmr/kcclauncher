@@ -78,7 +78,7 @@ src/
 
 ## 라이선스
 
-[MIT](LICENSE)
+[WTFPL](LICENSE)
 
 - [Pretendard](https://github.com/orioncactus/pretendard) 폰트는 SIL Open Font License 1.1을 따릅니다. 원문은 `src/renderer/fonts/OFL.txt`에 있습니다.
 - Minecraft는 Mojang Studios의 상표입니다. 이 프로젝트는 Mojang · Microsoft와 관련이 없습니다.
