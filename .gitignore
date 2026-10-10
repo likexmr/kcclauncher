@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# 배포용 Azure client_id (client-id.example.js 참고)
+src/main/client-id.js
+
+.env
+.DS_Store
+Thumbs.db

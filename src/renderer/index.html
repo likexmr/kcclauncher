@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; font-src 'self';" />
+  <title>KoreaCom Launcher</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 사이드바 -->
+    <aside class="side">
+      <div class="brand">
+        <div class="logo">K</div>
+        <div class="brand-txt">
+          <b>KoreaCom</b>
+          <span>Client Launcher</span>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-view="home"><span>홈</span></button>
+        <button class="nav-item" data-view="settings"><span>설정</span></button>
+      </nav>
+
+      <div class="side-foot">
+        <div id="account" class="account empty">
+          <img id="avatar" class="avatar" alt="" />
+          <div class="acc-txt">
+            <b id="acc-name">로그인 안 됨</b>
+            <span id="acc-type">계정을 추가하세요</span>
+          </div>
+          <button id="acc-menu-btn" class="icon-btn" title="계정">⋯</button>
+        </div>
+        <div id="acc-menu" class="acc-menu hidden"></div>
+      </div>
+    </aside>
+
+    <!-- 본문 -->
+    <main class="main">
+      <!-- 홈 -->
+      <section id="view-home" class="view">
+        <div class="hero">
+          <div class="hero-top">
+            <div>
+              <div class="eyebrow">마인크래프트 1.8.8 · PvP</div>
+              <h1>KoreaCom Client</h1>
+              <div id="build-line" class="build-line">버전 확인 중…</div>
+            </div>
+            <button id="refresh" class="icon-btn big" title="업데이트 확인">⟳</button>
+          </div>
+
+          <div class="play-row">
+            <button id="play" class="play" disabled>
+              <span id="play-label">준비 중…</span>
+            </button>
+            <div class="play-meta">
+              <div id="stage" class="stage">—</div>
+              <div class="bar"><div id="bar-fill" class="bar-fill"></div></div>
+              <div id="prog-txt" class="prog-txt"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="log-wrap">
+          <div class="log-head">
+            <b>로그</b>
+            <div class="log-btns">
+              <button id="toggle-log" class="chip">보이기</button>
+              <button id="kill" class="chip danger hidden">종료</button>
+            </div>
+          </div>
+          <pre id="log" class="log hidden"></pre>
+        </div>
+      </section>
+
+      <!-- 설정 -->
+      <section id="view-settings" class="view hidden">
+        <h2>설정</h2>
+
+        <div class="field">
+          <label>메모리 (RAM)</label>
+          <div class="row">
+            <input id="ram" type="range" min="1024" max="8192" step="512" />
+            <span id="ram-val" class="mono">2048 MB</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>게임 폴더 (--gameDir)</label>
+          <div class="row">
+            <input id="gameDir" type="text" placeholder="기본 인스턴스 폴더" />
+            <button id="open-gamedir" class="chip">열기</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>자바 경로</label>
+          <div class="row">
+            <input id="javaPath" type="text" placeholder="비우면 자바 8 자동 다운로드·관리" />
+            <button id="pick-java" class="chip">찾기</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Azure 앱 client_id <span class="hint">정품 로그인용 (퍼블릭 클라이언트)</span></label>
+          <input id="azureClientId" type="text" placeholder="예: 00000000-0000-0000-0000-000000000000" />
+        </div>
+
+        <div class="field">
+          <label>사이트 주소</label>
+          <input id="site" type="text" placeholder="https://korcomclient.xyz" />
+        </div>
+
+        <div class="field row between">
+          <label class="inline"><input id="closeOnLaunch" type="checkbox" /> 실행하면 런처 최소화</label>
+          <div class="row">
+            <button id="import-zip" class="chip">로컬 zip 설치</button>
+            <button id="reinstall" class="chip">재설치 / 확인</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <button id="save-settings" class="btn-accent">저장</button>
+          <span id="saved" class="saved hidden">저장됨</span>
+        </div>
+
+        <div class="about" id="about"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div id="modal-title" class="modal-title"></div>
+      <input id="modal-input" type="text" />
+      <div class="modal-btns">
+        <button id="modal-cancel" class="chip">취소</button>
+        <button id="modal-ok" class="btn-accent">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>

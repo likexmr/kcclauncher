@@ -1,0 +1,57 @@
+{
+  "name": "koreacom-launcher",
+  "version": "1.0.0",
+  "description": "KoreaCom Client 런처 (Windows + Linux)",
+  "author": "KoreaCom",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "KCC_DEV=1 electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "xyz.korcomclient.launcher",
+    "productName": "KoreaCom Launcher",
+    "files": [
+      "src/**/*",
+      "!**/*.map"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "KoreaCom-Launcher-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "tar.gz", "arch": ["x64"] }
+      ],
+      "category": "Game",
+      "icon": "build/icon.png",
+      "artifactName": "KoreaCom-Launcher-${version}.${ext}"
+    }
+  }
+}
