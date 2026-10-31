@@ -12,7 +12,7 @@ const dirs = {
   natives: path.join(root, "instance", "natives"),
   versions: path.join(root, "instance", "versions"),
   gameDir: path.join(root, "instance", "game"), // --gameDir (세이브·설정·config.json 여기)
-  java: path.join(root, "java"), // 관리형 자바 8
+  java: path.join(root, "java"), // 관리형 자바(주 버전별 폴더, .kcc-java-ok 에 major)
   cache: path.join(root, "cache"),
 };
 

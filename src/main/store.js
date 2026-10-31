@@ -7,7 +7,7 @@ const store = new Store({
     site: "https://korcomclient.xyz",
     azureClientId: "", // 비면 client-id.js 기본값. KCC_AZURE_CLIENT_ID 로 덮어쓰기 가능
     ramMb: 2048,
-    javaPath: "", // 비면 관리형 자바 8 자동
+    javaPath: "", // 비면 클라이언트가 원하는 버전(json javaVersion)의 관리형 자바 자동
     gameDir: "", // 비면 기본 인스턴스
     closeOnLaunch: false,
     accounts: [], // [{type,name,uuid,accessToken,msRefresh,obtained}]

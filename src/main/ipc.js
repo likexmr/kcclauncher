@@ -96,12 +96,13 @@ function register(win) {
   // 설치/업데이트(명시적). opts.localZip 있으면 그 파일에서.
   ipcMain.handle("client:install", async (_e, opts = {}) => {
     try {
-      onStage("자바 확인 중");
-      await javaMgr.ensureJava(store.get("javaPath"), onProgress);
       let remote = null;
       if (!opts.localZip) { try { remote = await installer.fetchRemoteVersion(store.get("site")); } catch (_) {} }
       const res = await installer.ensureClient({ site: store.get("site"), localZip: opts.localZip || null, remote, onProgress, onStage });
       if (res.build) store.set("installedBuild", res.build);
+      // 자바는 버전 json 이 원하는 주 버전으로(b11~ 은 21)
+      onStage("자바 확인 중");
+      await javaMgr.ensureJava(store.get("javaPath"), onProgress, javaMgr.requiredMajor(res.versionJson));
       onStage("설치 완료");
       return { ok: true, build: res.build || store.get("installedBuild") };
     } catch (e) {
@@ -114,9 +115,6 @@ function register(win) {
     const acc = selected();
     if (!acc) return { ok: false, error: "계정을 먼저 추가하세요." };
     try {
-      onStage("자바 확인 중");
-      const java = await javaMgr.ensureJava(store.get("javaPath"), onProgress);
-
       // 업데이트 확인(가능하면). 설치 안 됐거나 빌드가 다르면 설치.
       let remote = null;
       try { remote = await installer.fetchRemoteVersion(store.get("site")); } catch (_) {}
@@ -128,6 +126,9 @@ function register(win) {
       if (!isInstalled()) return { ok: false, error: "클라이언트가 설치되지 않았어요." };
 
       const versionJson = JSON.parse(fs.readFileSync(versionJsonPath(), "utf8"));
+
+      onStage("자바 확인 중");
+      const java = await javaMgr.ensureJava(store.get("javaPath"), onProgress, javaMgr.requiredMajor(versionJson));
 
       // 정품 토큰 갱신(오래됐으면)
       let account = acc;

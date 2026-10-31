@@ -105,6 +105,9 @@ async function ensureClient({ site, localZip, remote, onProgress = () => {}, onS
 
   // --- 네이티브 추출 ---
   onStage("네이티브 준비 중");
+  // 옛 빌드(LWJGL2)의 dll/so 가 남으면 다른 버전이 섞여 로드될 수 있어 매번 새로 푼다.
+  // LWJGL3 빌드는 네이티브가 클래스패스 jar(natives-windows/linux)에 있고 LWJGL 이 직접 풀어 쓴다.
+  try { fs.rmSync(dirs.natives, { recursive: true, force: true }); } catch (_) {}
   fs.mkdirSync(dirs.natives, { recursive: true });
   for (const t of nativeTasks) {
     const tmp = path.join(dirs.cache, "native-" + path.basename(t.url));
