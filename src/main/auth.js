@@ -140,4 +140,6 @@ async function refreshAccount(store, account) {
   return { ...account, name: mc.name, uuid: mc.uuid, accessToken: mc.accessToken, msRefresh: ms.refresh_token || account.msRefresh, obtained: Date.now() };
 }
 
-module.exports = { login, refreshAccount, clientId };
+function hasBuiltInClientId() { return !!DEFAULT_CLIENT_ID; }
+
+module.exports = { login, refreshAccount, clientId, hasBuiltInClientId };

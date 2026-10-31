@@ -40,6 +40,7 @@ async function refreshState() {
   renderConfig();
   updatePlay();
   $("#about").textContent = `KoreaCom Launcher v${state.appVersion}` + (state.dev ? " · 개발 모드" : "");
+  renderUpdater(state.updater);
   checkVersion();
 }
 
@@ -61,6 +62,10 @@ function renderAccount() {
 
 function renderConfig() {
   const c = state.config;
+  // RAM 상한: 컴퓨터 메모리에서 2GB 는 OS 몫으로 남김(최소 2GB, 최대 16GB)
+  const maxRam = Math.max(2048, Math.min(16384, Math.floor(((state.totalMemMb || 8192) - 2048) / 512) * 512));
+  $("#ram").max = maxRam;
+  $("#azureClientId").placeholder = c.builtInClientId ? "비우면 기본값 사용" : "예: 00000000-0000-0000-0000-000000000000";
   $("#ram").value = c.ramMb; $("#ram-val").textContent = c.ramMb + " MB";
   $("#gameDir").value = c.gameDir || "";
   $("#javaPath").value = c.javaPath || "";
@@ -141,24 +146,77 @@ function updatePlay() {
   p.disabled = false;
 }
 
+// ---- 런처 업데이트 ----
+let lastUpd = null;
+function renderUpdater(u) {
+  lastUpd = u || { status: "idle" };
+  const box = $("#upd"), txt = $("#upd-txt"), btn = $("#upd-btn");
+  btn.classList.add("hidden");
+  switch (lastUpd.status) {
+    case "downloading":
+      txt.innerHTML = `런처 v${lastUpd.version || ""} 받는 중 <small>${lastUpd.percent || 0}%</small>`; break;
+    case "ready":
+      txt.innerHTML = `런처 v${lastUpd.version} 준비됨 <small>${running ? "게임을 끄면 다시 시작할 수 있어요" : "닫을 때도 자동으로 적용돼요"}</small>`;
+      btn.textContent = "다시 시작해서 업데이트"; btn.classList.remove("hidden"); btn.disabled = running;
+      btn.onclick = async () => { const r = await window.kcc.installLauncherUpdate(); if (!r.ok) toast(r.error, true); };
+      break;
+    case "manual":
+      txt.innerHTML = `런처 새 버전 v${lastUpd.version} <small>이 런처는 자동 업데이트가 안 되는 형태예요</small>`;
+      btn.textContent = "받으러 가기"; btn.classList.remove("hidden"); btn.disabled = false;
+      btn.onclick = () => window.kcc.openReleases(lastUpd.url);
+      break;
+    default:
+      box.classList.add("hidden"); return;
+  }
+  box.classList.remove("hidden");
+}
+window.kcc.on("updater", (u) => {
+  const was = lastUpd && lastUpd.status;
+  renderUpdater(u);
+  if (u.status === "ready" && was !== "ready") toast(`런처 v${u.version} 업데이트를 받았어요`);
+  if (checkingByHand && ["none", "error", "ready", "manual", "downloading"].includes(u.status)) {
+    checkingByHand = false;
+    if (u.status === "none") toast(u.dev ? "개발 실행에선 업데이트 확인 안 함" : "런처가 최신이에요");
+    if (u.status === "error") toast("업데이트 확인 실패: " + (u.error || ""), true);
+  }
+});
+let checkingByHand = false;
+// 결과는 위 "updater" 이벤트로 온다(포터블·개발 실행도 같은 이벤트)
+$("#check-launcher").onclick = () => { checkingByHand = true; window.kcc.checkLauncherUpdate(); };
+
 // ---- 진행률/로그 이벤트 ----
 window.kcc.on("stage", (s) => { $("#stage").textContent = s; });
+// 속도: 최근 1초 남짓 받은 양
+let speedMark = { t: 0, bytes: 0 }, speedTxt = "";
 window.kcc.on("progress", (p) => {
   const pct = p.total ? Math.min(100, (p.received / p.total) * 100) : 0;
+  const now = performance.now();
+  if (now - speedMark.t > 1000 || p.received < speedMark.bytes) {
+    if (speedMark.t && p.received >= speedMark.bytes) speedTxt = `${((p.received - speedMark.bytes) / 1048576 / ((now - speedMark.t) / 1000)).toFixed(1)} MB/s`;
+    speedMark = { t: now, bytes: p.received };
+  }
   $("#bar-fill").style.width = pct + "%";
-  $("#prog-txt").textContent = p.total ? `${(p.label || "")} ${fmtMB(p.received)} / ${fmtMB(p.total)} (${pct.toFixed(0)}%)` : `${p.label || ""} ${fmtMB(p.received)}`;
+  const sp = speedTxt ? ` · ${speedTxt}` : "";
+  $("#prog-txt").textContent = p.total ? `${(p.label || "")} ${fmtMB(p.received)} / ${fmtMB(p.total)} (${pct.toFixed(0)}%)${sp}` : `${p.label || ""} ${fmtMB(p.received)}${sp}`;
 });
 window.kcc.on("log", (l) => {
   const log = $("#log"); log.textContent += l;
   if (log.textContent.length > 60000) log.textContent = log.textContent.slice(-50000);
   log.scrollTop = log.scrollHeight;
 });
-window.kcc.on("game:started", () => { running = true; busy = false; updatePlay(); $("#stage").textContent = "게임이 실행됐어요"; });
-window.kcc.on("game:exit", (code) => {
-  running = false; busy = false; updatePlay();
-  $("#stage").textContent = code === 0 ? "게임 종료" : `게임 종료 (코드 ${code})`;
+window.kcc.on("game:started", () => { running = true; busy = false; updatePlay(); renderUpdater(lastUpd); $("#stage").textContent = "게임이 실행됐어요"; });
+window.kcc.on("game:exit", (e) => {
+  const code = typeof e === "object" ? e.code : e;
+  running = false; busy = false; updatePlay(); renderUpdater(lastUpd);
   $("#bar-fill").style.width = "0%"; $("#prog-txt").textContent = "";
+  if (code === 0 || code === null) { $("#stage").textContent = "게임 종료"; return; }
+  // 비정상 종료: 로그를 펼쳐 마지막 오류가 보이게
+  $("#stage").textContent = `게임이 비정상 종료됐어요 (코드 ${code})`;
+  const log = $("#log");
+  log.classList.remove("hidden"); $("#toggle-log").textContent = "숨기기"; log.scrollTop = log.scrollHeight;
+  toast("게임이 튕겼어요. 문의할 땐 '로그 파일'을 보내 주세요.", true);
 });
+$("#open-log").onclick = () => window.kcc.openGameLog();
 
 // ---- 플레이 ----
 $("#play").onclick = async () => {

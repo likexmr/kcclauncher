@@ -8,6 +8,8 @@ const auth = require("./auth");
 const installer = require("./installer");
 const javaMgr = require("./java");
 const { launch } = require("./launch");
+const updater = require("./updater");
+const os = require("os");
 
 const DEV = !!process.env.KCC_DEV;
 let gameChild = null;
@@ -22,8 +24,12 @@ function publicConfig() {
     gameDir: store.get("gameDir"),
     closeOnLaunch: store.get("closeOnLaunch"),
     installedBuild: store.get("installedBuild"),
+    builtInClientId: auth.hasBuiltInClientId(),
   };
 }
+
+// 마지막 게임 실행 로그(문의할 때 보내 달라고 하기 좋게 파일로도 남김)
+function gameLogPath() { return path.join(dirs.root, "logs", "last-game.log"); }
 
 function versionJsonPath() { return path.join(dirs.versions, "KoreaCom", "KoreaCom.json"); }
 function clientJarPath() { return path.join(dirs.versions, "KoreaCom", "KoreaCom.jar"); }
@@ -33,6 +39,7 @@ function register(win) {
   const send = (ch, payload) => win && !win.isDestroyed() && win.webContents.send(ch, payload);
   const onProgress = (p) => send("progress", p);
   const onStage = (s) => send("stage", s);
+  updater.init(send, () => !!gameChild);
 
   ipcMain.handle("state:get", () => ({
     accounts: accounts().map((a) => ({ name: a.name, uuid: a.uuid, type: a.type })),
@@ -41,7 +48,14 @@ function register(win) {
     installed: isInstalled(),
     dev: DEV,
     appVersion: app.getVersion(),
+    totalMemMb: Math.floor(os.totalmem() / 1048576),
+    updater: updater.getState(),
   }));
+
+  ipcMain.handle("updater:check", () => updater.check());
+  ipcMain.handle("updater:install", () => updater.install());
+  ipcMain.handle("shell:openReleases", (_e, url) => shell.openExternal(url && url.startsWith("https://github.com/") ? url : updater.RELEASES));
+  ipcMain.handle("shell:openGameLog", () => (fs.existsSync(gameLogPath()) ? shell.showItemInFolder(gameLogPath()) : shell.openPath(dirs.root)));
 
   ipcMain.handle("account:login", async () => {
     const acc = await auth.login(store, win);
@@ -142,11 +156,20 @@ function register(win) {
       }
 
       onStage("실행 중");
+      fs.mkdirSync(path.dirname(gameLogPath()), { recursive: true });
+      const logFile = fs.createWriteStream(gameLogPath());
+      const started = Date.now();
       gameChild = launch({
         java, account, versionJson, clientJar: clientJarPath(),
         ramMb: store.get("ramMb"), gameDir: store.get("gameDir") || dirs.gameDir,
-        onLog: (l) => send("log", l),
-        onExit: (code) => { gameChild = null; send("game:exit", code); },
+        onLog: (l) => { send("log", l); logFile.write(l); },
+        onExit: (code) => {
+          gameChild = null;
+          logFile.end();
+          send("game:exit", { code, seconds: Math.round((Date.now() - started) / 1000) });
+          // 게임을 끄는 동안 받아 둔 런처 업데이트가 있으면 알림만 다시
+          send("updater", updater.getState());
+        },
       });
       send("game:started", {});
       if (store.get("closeOnLaunch")) setTimeout(() => win.minimize(), 800);

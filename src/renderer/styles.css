@@ -63,6 +63,10 @@ body {
 .nav-item.active { background: var(--bg2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
 
 .side-foot { margin-top: auto; position: relative; }
+.upd { margin: auto 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--bg2); border: 1px solid rgba(79,209,197,.35); font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+.upd + .side-foot { margin-top: 0; }
+.upd-txt { color: var(--text); line-height: 1.4; }
+.upd-txt small { color: var(--dim); display: block; }
 .account {
   display: flex; align-items: center; gap: 10px;
   background: var(--bg2); border: 1px solid var(--line);

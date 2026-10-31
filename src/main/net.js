@@ -48,8 +48,24 @@ async function getText(url) {
 }
 
 // url → dest 파일. sha1 있으면 먼저 검사해 이미 맞으면 건너뜀. onBytes(delta) 로 진행률.
-async function download(url, dest, { sha1, onBytes } = {}) {
+// 네트워크 끊김·시간 초과·5xx·sha1 불일치는 최대 3번까지 다시(에셋이 수천 개라 한 개 실패로 설치 전체가 멈추지 않게).
+// 실패한 시도에서 센 바이트는 진행률에서 다시 뺀다.
+async function download(url, dest, { sha1, onBytes, tries = 3 } = {}) {
   if (sha1 && fs.existsSync(dest) && (await sha1File(dest)) === sha1) return false;
+  for (let attempt = 1; ; attempt++) {
+    let counted = 0;
+    const count = (n) => { counted += n; if (onBytes) onBytes(n); };
+    try {
+      return await downloadOnce(url, dest, sha1, count);
+    } catch (e) {
+      if (counted && onBytes) onBytes(-counted);
+      if (attempt >= tries || /HTTP 4\d\d/.test(e.message)) throw e;
+      await new Promise((r) => setTimeout(r, 700 * attempt));
+    }
+  }
+}
+
+async function downloadOnce(url, dest, sha1, onBytes) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const res = await request(url);
   if (res.statusCode !== 200) throw new Error(`HTTP ${res.statusCode} ${url}`);

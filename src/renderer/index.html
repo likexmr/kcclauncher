@@ -23,6 +23,11 @@
         <button class="nav-item" data-view="settings"><span>설정</span></button>
       </nav>
 
+      <div id="upd" class="upd hidden">
+        <div id="upd-txt" class="upd-txt"></div>
+        <button id="upd-btn" class="chip hidden"></button>
+      </div>
+
       <div class="side-foot">
         <div id="account" class="account empty">
           <img id="avatar" class="avatar" alt="" />
@@ -66,6 +71,7 @@
           <div class="log-head">
             <b>로그</b>
             <div class="log-btns">
+              <button id="open-log" class="chip">로그 파일</button>
               <button id="toggle-log" class="chip">보이기</button>
               <button id="kill" class="chip danger hidden">종료</button>
             </div>
@@ -103,7 +109,7 @@
         </div>
 
         <div class="field">
-          <label>Azure 앱 client_id <span class="hint">정품 로그인용 (퍼블릭 클라이언트)</span></label>
+          <label>Azure 앱 client_id <span class="hint">정품 로그인용 — 보통은 비워 두세요</span></label>
           <input id="azureClientId" type="text" placeholder="예: 00000000-0000-0000-0000-000000000000" />
         </div>
 
@@ -125,7 +131,7 @@
           <span id="saved" class="saved hidden">저장됨</span>
         </div>
 
-        <div class="about" id="about"></div>
+        <div class="about"><span id="about"></span> <button id="check-launcher" class="chip">런처 업데이트 확인</button></div>
       </section>
     </main>
   </div>

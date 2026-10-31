@@ -18,5 +18,9 @@ contextBridge.exposeInMainWorld("kcc", {
   pickJava: () => invoke("dialog:pickJava"),
   openExternal: (url) => invoke("shell:openExternal", url),
   openGameDir: () => invoke("shell:openGameDir"),
+  openGameLog: () => invoke("shell:openGameLog"),
+  openReleases: (url) => invoke("shell:openReleases", url),
+  checkLauncherUpdate: () => invoke("updater:check"),
+  installLauncherUpdate: () => invoke("updater:install"),
   on,
 });
