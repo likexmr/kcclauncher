@@ -1,0 +1,40 @@
+name: release
+
+# 태그(v1.0.2 …)를 올리면 윈도우·리눅스 둘 다 빌드해서 그 버전의 GitHub 릴리스에 올린다.
+# 설치된 런처는 latest.yml / latest-linux.yml 을 보고 자동 업데이트한다.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}   # Actions 탭에서 손으로도 돌릴 수 있게
+
+permissions:
+  contents: write          # 릴리스에 파일 업로드
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: "--win"
+          - os: ubuntu-latest
+            args: "--linux"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      # 정품 로그인용 Azure client_id. 저장소 Secrets 의 KCC_AZURE_CLIENT_ID 에서 만든다(없으면 빈 값).
+      - name: client-id 만들기
+        shell: bash
+        run: printf 'module.exports = "%s";\n' "${KCC_AZURE_CLIENT_ID}" > src/main/client-id.js
+        env:
+          KCC_AZURE_CLIENT_ID: ${{ secrets.KCC_AZURE_CLIENT_ID }}
+      - name: 빌드·게시
+        shell: bash
+        run: npx electron-builder ${{ matrix.args }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
