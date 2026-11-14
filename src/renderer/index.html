@@ -7,147 +7,194 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app">
-    <!-- 사이드바 -->
-    <aside class="side">
-      <div class="brand">
-        <div class="logo">K</div>
-        <div class="brand-txt">
-          <b>KoreaCom</b>
-          <span>Client Launcher</span>
+  <!-- 제목 표시줄(끌어서 창 이동) -->
+  <header class="titlebar">
+    <div class="tb-brand">
+      <div class="mark">K</div>
+      <span>KoreaCom</span>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-view="home">홈</button>
+      <button class="tab" data-view="settings">설정</button>
+      <span class="tab-ind" id="tab-ind"></span>
+    </nav>
+    <div class="tb-right" id="tb-right">
+      <button id="upd-pill" class="upd-pill hidden"></button>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- 홈 -->
+    <section id="view-home" class="view home">
+      <div class="stage-card">
+        <canvas id="scene" class="scene" width="240" height="135"></canvas>
+        <div class="scene-fade"></div>
+
+        <div class="stage-top">
+          <div class="chip-line">
+            <span class="badge">1.8.9 PvP</span>
+            <span id="build-line" class="build-line">버전 확인 중…</span>
+            <button id="refresh" class="ghost-ico" title="다시 확인">
+              <svg viewBox="0 0 24 24" width="15" height="15"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <h1>KoreaCom<br><span>Client</span></h1>
+        </div>
+
+        <div class="stage-bottom">
+          <div id="err" class="err hidden">
+            <div class="err-ico">!</div>
+            <div class="err-txt" id="err-txt"></div>
+            <button id="err-retry" class="btn-sm">다시 시도</button>
+          </div>
+
+          <button id="play" class="play" disabled>
+            <span class="play-fill" id="play-fill"></span>
+            <span class="play-label" id="play-label">준비 중…</span>
+            <span class="play-sub" id="play-sub"></span>
+          </button>
+          <div class="status">
+            <span id="stage" class="stage-txt">&nbsp;</span>
+            <span id="prog-txt" class="prog-txt"></span>
+          </div>
         </div>
       </div>
 
-      <nav class="nav">
-        <button class="nav-item active" data-view="home"><span>홈</span></button>
-        <button class="nav-item" data-view="settings"><span>설정</span></button>
-      </nav>
-
-      <div id="upd" class="upd hidden">
-        <div id="upd-txt" class="upd-txt"></div>
-        <button id="upd-btn" class="chip hidden"></button>
-      </div>
-
-      <div class="side-foot">
-        <div id="account" class="account empty">
+      <aside class="side">
+        <div class="card account" id="account">
           <img id="avatar" class="avatar" alt="" />
           <div class="acc-txt">
             <b id="acc-name">로그인 안 됨</b>
             <span id="acc-type">계정을 추가하세요</span>
           </div>
-          <button id="acc-menu-btn" class="icon-btn" title="계정">⋯</button>
+          <button id="acc-menu-btn" class="ghost-ico" title="계정 바꾸기">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div id="acc-menu" class="menu hidden"></div>
         </div>
-        <div id="acc-menu" class="acc-menu hidden"></div>
+
+        <div class="card info">
+          <div class="info-row"><span>설치된 버전</span><b id="i-installed">—</b></div>
+          <div class="info-row"><span>최신 버전</span><b id="i-latest">—</b></div>
+          <div class="info-row"><span>메모리</span><b id="i-ram">—</b></div>
+        </div>
+
+        <div class="card links">
+          <button id="open-gamedir" class="link-btn">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            게임 폴더
+          </button>
+          <button id="toggle-log" class="link-btn">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 6h16M4 12h16M4 18h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            게임 로그
+          </button>
+          <button id="open-site" class="link-btn">
+            <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+            사이트
+          </button>
+        </div>
+
+        <button id="kill" class="kill hidden">게임 강제 종료</button>
+      </aside>
+
+      <!-- 로그 서랍 -->
+      <div id="drawer" class="drawer">
+        <div class="drawer-head">
+          <b>게임 로그</b>
+          <div class="drawer-btns">
+            <button id="open-log" class="btn-sm ghost">파일 위치</button>
+            <button id="close-log" class="btn-sm ghost">닫기</button>
+          </div>
+        </div>
+        <pre id="log" class="log"></pre>
       </div>
-    </aside>
+    </section>
 
-    <!-- 본문 -->
-    <main class="main">
-      <!-- 홈 -->
-      <section id="view-home" class="view">
-        <div class="hero">
-          <div class="hero-top">
-            <div>
-              <div class="eyebrow">마인크래프트 1.8.8 · PvP</div>
-              <h1>KoreaCom Client</h1>
-              <div id="build-line" class="build-line">버전 확인 중…</div>
+    <!-- 설정 -->
+    <section id="view-settings" class="view settings hidden">
+      <div class="set-col">
+        <div class="card set">
+          <h3>게임</h3>
+          <div class="set-row">
+            <div class="set-lbl"><b>메모리</b><span>보통 2~4GB 면 충분해요. 너무 많이 주면 오히려 끊길 수 있어요.</span></div>
+            <div class="ram">
+              <input id="ram" type="range" min="1024" max="8192" step="512" />
+              <span id="ram-val" class="mono">2048 MB</span>
             </div>
-            <button id="refresh" class="icon-btn big" title="업데이트 확인">⟳</button>
           </div>
-
-          <div class="play-row">
-            <button id="play" class="play" disabled>
-              <span id="play-label">준비 중…</span>
-            </button>
-            <div class="play-meta">
-              <div id="stage" class="stage">—</div>
-              <div class="bar"><div id="bar-fill" class="bar-fill"></div></div>
-              <div id="prog-txt" class="prog-txt"></div>
+          <div class="set-row">
+            <div class="set-lbl"><b>게임을 켠 뒤 런처</b><span>런처를 닫아도 게임은 계속 켜져 있어요.</span></div>
+            <div class="seg" id="after">
+              <button data-v="keep">그대로</button>
+              <button data-v="minimize">최소화</button>
+              <button data-v="close">닫기</button>
             </div>
           </div>
         </div>
 
-        <div class="log-wrap">
-          <div class="log-head">
-            <b>로그</b>
-            <div class="log-btns">
-              <button id="open-log" class="chip">로그 파일</button>
-              <button id="toggle-log" class="chip">보이기</button>
-              <button id="kill" class="chip danger hidden">종료</button>
+        <div class="card set">
+          <h3>경로</h3>
+          <div class="set-row col">
+            <div class="set-lbl"><b>게임 폴더</b><span>비우면 런처 기본 폴더(세이브·설정·스크린샷이 여기 있어요)</span></div>
+            <div class="inp-row">
+              <input id="gameDir" type="text" placeholder="기본 폴더" spellcheck="false" />
+              <button id="open-gamedir2" class="btn-sm ghost">열기</button>
             </div>
           </div>
-          <pre id="log" class="log hidden"></pre>
-        </div>
-      </section>
-
-      <!-- 설정 -->
-      <section id="view-settings" class="view hidden">
-        <h2>설정</h2>
-
-        <div class="field">
-          <label>메모리 (RAM)</label>
-          <div class="row">
-            <input id="ram" type="range" min="1024" max="8192" step="512" />
-            <span id="ram-val" class="mono">2048 MB</span>
+          <div class="set-row col">
+            <div class="set-lbl"><b>자바</b><span>비우면 맞는 자바를 알아서 받아 써요</span></div>
+            <div class="inp-row">
+              <input id="javaPath" type="text" placeholder="자동" spellcheck="false" />
+              <button id="pick-java" class="btn-sm ghost">찾기</button>
+            </div>
           </div>
         </div>
 
-        <div class="field">
-          <label>게임 폴더 (--gameDir)</label>
-          <div class="row">
-            <input id="gameDir" type="text" placeholder="기본 인스턴스 폴더" />
-            <button id="open-gamedir" class="chip">열기</button>
+        <div class="card set">
+          <h3>설치</h3>
+          <div class="set-row">
+            <div class="set-lbl"><b>파일 확인·다시 설치</b><span>게임이 안 켜지거나 파일이 깨졌을 때</span></div>
+            <button id="reinstall" class="btn-sm">확인하기</button>
+          </div>
+          <div class="set-row">
+            <div class="set-lbl"><b>zip 파일로 설치</b><span>받아 둔 KoreaCom-b○○.zip 으로</span></div>
+            <button id="import-zip" class="btn-sm ghost">파일 고르기</button>
           </div>
         </div>
 
-        <div class="field">
-          <label>자바 경로</label>
-          <div class="row">
-            <input id="javaPath" type="text" placeholder="비우면 맞는 자바 자동 다운로드·관리" />
-            <button id="pick-java" class="chip">찾기</button>
+        <details class="card set adv">
+          <summary><h3>고급</h3></summary>
+          <div class="set-row col">
+            <div class="set-lbl"><b>사이트 주소</b></div>
+            <input id="site" type="text" placeholder="https://korcomclient.xyz" spellcheck="false" />
           </div>
-        </div>
-
-        <div class="field">
-          <label>Azure 앱 client_id <span class="hint">정품 로그인용 — 보통은 비워 두세요</span></label>
-          <input id="azureClientId" type="text" placeholder="예: 00000000-0000-0000-0000-000000000000" />
-        </div>
-
-        <div class="field">
-          <label>사이트 주소</label>
-          <input id="site" type="text" placeholder="https://korcomclient.xyz" />
-        </div>
-
-        <div class="field row between">
-          <label class="inline"><input id="closeOnLaunch" type="checkbox" /> 실행하면 런처 최소화</label>
-          <div class="row">
-            <button id="import-zip" class="chip">로컬 zip 설치</button>
-            <button id="reinstall" class="chip">재설치 / 확인</button>
+          <div class="set-row col">
+            <div class="set-lbl"><b>Azure 앱 client_id</b><span>정품 로그인용 — 보통은 비워 두세요</span></div>
+            <input id="azureClientId" type="text" placeholder="비우면 기본값" spellcheck="false" />
           </div>
-        </div>
+        </details>
 
-        <div class="field">
-          <button id="save-settings" class="btn-accent">저장</button>
-          <span id="saved" class="saved hidden">저장됨</span>
+        <div class="about">
+          <span id="about"></span>
+          <button id="check-launcher" class="btn-sm ghost">런처 업데이트 확인</button>
         </div>
-
-        <div class="about"><span id="about"></span> <button id="check-launcher" class="chip">런처 업데이트 확인</button></div>
-      </section>
-    </main>
-  </div>
+      </div>
+    </section>
+  </main>
 
   <div id="modal" class="modal hidden">
     <div class="modal-box">
       <div id="modal-title" class="modal-title"></div>
       <input id="modal-input" type="text" />
       <div class="modal-btns">
-        <button id="modal-cancel" class="chip">취소</button>
-        <button id="modal-ok" class="btn-accent">확인</button>
+        <button id="modal-cancel" class="btn-sm ghost">취소</button>
+        <button id="modal-ok" class="btn-sm">확인</button>
       </div>
     </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>
+  <script src="scene.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -10,6 +10,14 @@ const javaMgr = require("./java");
 const { launch } = require("./launch");
 const updater = require("./updater");
 const os = require("os");
+const net = require("./net");
+
+// 실행한 뒤 런처: keep(그대로) | minimize | close. 옛 설정 closeOnLaunch=true 는 minimize.
+function afterLaunch() {
+  const v = store.get("afterLaunch");
+  if (v === "keep" || v === "minimize" || v === "close") return v;
+  return store.get("closeOnLaunch") ? "minimize" : "keep";
+}
 
 const DEV = !!process.env.KCC_DEV;
 let gameChild = null;
@@ -22,7 +30,7 @@ function publicConfig() {
     ramMb: store.get("ramMb"),
     javaPath: store.get("javaPath"),
     gameDir: store.get("gameDir"),
-    closeOnLaunch: store.get("closeOnLaunch"),
+    afterLaunch: afterLaunch(),
     installedBuild: store.get("installedBuild"),
     builtInClientId: auth.hasBuiltInClientId(),
   };
@@ -38,7 +46,8 @@ function isInstalled() { return fs.existsSync(versionJsonPath()) && fs.existsSyn
 function register(win) {
   const send = (ch, payload) => win && !win.isDestroyed() && win.webContents.send(ch, payload);
   const onProgress = (p) => send("progress", p);
-  const onStage = (s) => send("stage", s);
+  let lastStage = "준비";
+  const onStage = (s) => { if (s !== "오류") lastStage = s.replace(/ 중$/, ""); send("stage", s); };
   updater.init(send, () => !!gameChild);
 
   ipcMain.handle("state:get", () => ({
@@ -81,7 +90,7 @@ function register(win) {
   ipcMain.handle("account:select", (_e, uuid) => { store.set("selectedUuid", uuid); return true; });
 
   ipcMain.handle("config:set", (_e, patch) => {
-    for (const k of ["site", "azureClientId", "ramMb", "javaPath", "gameDir", "closeOnLaunch"]) {
+    for (const k of ["site", "azureClientId", "ramMb", "javaPath", "gameDir", "afterLaunch"]) {
       if (k in patch) store.set(k, patch[k]);
     }
     return publicConfig();
@@ -92,7 +101,7 @@ function register(win) {
       const r = await installer.fetchRemoteVersion(store.get("site"));
       return { ok: true, remote: r, installedBuild: store.get("installedBuild"), installed: isInstalled() };
     } catch (e) {
-      return { ok: false, error: e.message, installedBuild: store.get("installedBuild"), installed: isInstalled() };
+      return { ok: false, error: net.friendly(e, "버전 확인").message, installedBuild: store.get("installedBuild"), installed: isInstalled() };
     }
   });
 
@@ -105,6 +114,8 @@ function register(win) {
     return r.canceled ? "" : r.filePaths[0];
   });
   ipcMain.handle("shell:openExternal", (_e, url) => shell.openExternal(url));
+  ipcMain.handle("window:minimize", () => win.minimize());
+  ipcMain.handle("window:close", () => win.close());
   ipcMain.handle("shell:openGameDir", () => shell.openPath(store.get("gameDir") || dirs.gameDir));
 
   // 설치/업데이트(명시적). opts.localZip 있으면 그 파일에서.
@@ -113,7 +124,10 @@ function register(win) {
       let remote = null;
       if (!opts.localZip) { try { remote = await installer.fetchRemoteVersion(store.get("site")); } catch (_) {} }
       const res = await installer.ensureClient({ site: store.get("site"), localZip: opts.localZip || null, remote, onProgress, onStage });
+      // 로컬 zip 은 파일 이름(KoreaCom-b12.zip)에서 빌드 번호 — 없으면 0 이 남아 실행할 때마다 사이트에서 다시 받았다
+      const zipBuild = opts.localZip && /b(\d+)/i.exec(path.basename(opts.localZip));
       if (res.build) store.set("installedBuild", res.build);
+      else if (zipBuild) store.set("installedBuild", parseInt(zipBuild[1], 10));
       // 자바는 버전 json 이 원하는 주 버전으로(b11~ 은 21)
       onStage("자바 확인 중");
       await javaMgr.ensureJava(store.get("javaPath"), onProgress, javaMgr.requiredMajor(res.versionJson));
@@ -121,7 +135,7 @@ function register(win) {
       return { ok: true, build: res.build || store.get("installedBuild") };
     } catch (e) {
       onStage("오류");
-      return { ok: false, error: e.message };
+      return { ok: false, error: net.friendly(e, lastStage).message };
     }
   });
 
@@ -156,27 +170,28 @@ function register(win) {
       }
 
       onStage("실행 중");
-      fs.mkdirSync(path.dirname(gameLogPath()), { recursive: true });
-      const logFile = fs.createWriteStream(gameLogPath());
       const started = Date.now();
       gameChild = launch({
         java, account, versionJson, clientJar: clientJarPath(),
         ramMb: store.get("ramMb"), gameDir: store.get("gameDir") || dirs.gameDir,
-        onLog: (l) => { send("log", l); logFile.write(l); },
+        logPath: gameLogPath(),
+        onLog: (l) => send("log", l),
         onExit: (code) => {
           gameChild = null;
-          logFile.end();
           send("game:exit", { code, seconds: Math.round((Date.now() - started) / 1000) });
           // 게임을 끄는 동안 받아 둔 런처 업데이트가 있으면 알림만 다시
           send("updater", updater.getState());
         },
       });
       send("game:started", {});
-      if (store.get("closeOnLaunch")) setTimeout(() => win.minimize(), 800);
+      // 게임은 런처와 떨어진 프로세스라 런처를 닫아도 계속 돈다
+      const after = afterLaunch();
+      if (after === "minimize") setTimeout(() => { if (!win.isDestroyed()) win.minimize(); }, 800);
+      if (after === "close") setTimeout(() => app.quit(), 1500);
       return { ok: true };
     } catch (e) {
       onStage("오류");
-      return { ok: false, error: e.message };
+      return { ok: false, error: net.friendly(e, lastStage).message };
     }
   });
 

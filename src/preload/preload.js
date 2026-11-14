@@ -23,4 +23,6 @@ contextBridge.exposeInMainWorld("kcc", {
   checkLauncherUpdate: () => invoke("updater:check"),
   installLauncherUpdate: () => invoke("updater:install"),
   on,
+  overlay: process.argv.includes("--kcc-overlay"),
+  platform: process.platform,
 });

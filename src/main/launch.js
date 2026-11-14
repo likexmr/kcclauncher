@@ -22,9 +22,13 @@ function fillArgs(template, vars) {
   return template.split(" ").map((tok) => tok.replace(/\$\{(\w+)\}/g, (_, k) => (k in vars ? vars[k] : "${" + k + "}")));
 }
 
-// opts: {java, account, versionJson, clientJar, ramMb, gameDir, onLog, onExit}
+// opts: {java, account, versionJson, clientJar, ramMb, gameDir, logPath, onLog, onExit}
+// 게임은 런처와 떨어진 프로세스로 띄운다(detached). 윈도우에서 Node 는 detached 아닌 자식을
+// '부모가 끝나면 같이 끝나는' 잡에 넣어서, 런처를 닫으면 게임도 꺼졌다.
+// 출력도 파이프 대신 로그 파일로 바로 쓰게 해서 런처가 없어져도 게임 쪽 쓰기가 막히지 않게 하고,
+// 런처는 그 파일을 따라 읽어 화면에 보여 준다.
 function launch(opts) {
-  const { java, account, versionJson, clientJar, ramMb = 2048, onLog = () => {}, onExit = () => {} } = opts;
+  const { java, account, versionJson, clientJar, ramMb = 2048, logPath, onLog = () => {}, onExit = () => {} } = opts;
   const gameDir = opts.gameDir || dirs.gameDir;
   fs.mkdirSync(gameDir, { recursive: true });
 
@@ -48,18 +52,50 @@ function launch(opts) {
     `-Djava.library.path=${dirs.natives}`,
     `-Dorg.lwjgl.librarypath=${dirs.natives}`,
     "-Dminecraft.launcher.brand=KoreaCom-Launcher",
+    // 로그 파일을 UTF-8 로(자바 18+; 8 은 무시) — 한글 로그가 깨지지 않게
+    "-Dstdout.encoding=UTF-8",
+    "-Dstderr.encoding=UTF-8",
     "-cp", classpath(versionJson, clientJar),
   ];
   if (process.platform === "darwin") jvm.unshift("-XstartOnFirstThread");
 
   const args = [...jvm, versionJson.mainClass, ...gameArgs];
-  onLog(`$ ${path.basename(java)} ${versionJson.mainClass} (Xmx${ramMb}M)\n`);
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.writeFileSync(logPath, `$ ${path.basename(java)} ${versionJson.mainClass} (Xmx${ramMb}M)\n`);
+  const fd = fs.openSync(logPath, "a");
+  let child;
+  try {
+    child = spawn(java, args, { cwd: gameDir, detached: true, windowsHide: true, stdio: ["ignore", fd, fd] });
+  } finally {
+    fs.closeSync(fd); // 자식은 자기 핸들을 갖고 있다
+  }
+  child.unref();
 
-  const child = spawn(java, args, { cwd: gameDir, detached: false });
-  child.stdout.on("data", (d) => onLog(d.toString()));
-  child.stderr.on("data", (d) => onLog(d.toString()));
-  child.on("close", (code) => onExit(code));
-  child.on("error", (e) => { onLog("실행 오류: " + e.message + "\n"); onExit(-1); });
+  // 로그 파일 따라 읽기
+  let pos = 0, ended = false;
+  const dec = new (require("string_decoder").StringDecoder)("utf8"); // 읽기 경계에서 한글이 잘려도 안 깨지게
+  const pump = () => {
+    try {
+      const size = fs.statSync(logPath).size;
+      if (size <= pos) return;
+      const h = fs.openSync(logPath, "r");
+      const buf = Buffer.alloc(Math.min(size - pos, 1 << 20));
+      const n = fs.readSync(h, buf, 0, buf.length, pos);
+      fs.closeSync(h);
+      pos += n;
+      if (n) onLog(dec.write(buf.slice(0, n)));
+    } catch (_) {}
+  };
+  const timer = setInterval(pump, 400);
+  const finish = (code) => {
+    if (ended) return;
+    ended = true;
+    clearInterval(timer);
+    pump(); pump();
+    onExit(code);
+  };
+  child.on("exit", (code) => finish(code));
+  child.on("error", (e) => { onLog("실행 오류: " + e.message + "\n"); finish(-1); });
   return child;
 }
 

@@ -9,7 +9,8 @@ const store = new Store({
     ramMb: 2048,
     javaPath: "", // 비면 클라이언트가 원하는 버전(json javaVersion)의 관리형 자바 자동
     gameDir: "", // 비면 기본 인스턴스
-    closeOnLaunch: false,
+    closeOnLaunch: false, // 옛 설정(afterLaunch 로 바뀜)
+    afterLaunch: "",
     accounts: [], // [{type,name,uuid,accessToken,msRefresh,obtained}]
     selectedUuid: "",
     installedBuild: 0,

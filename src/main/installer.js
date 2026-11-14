@@ -60,10 +60,18 @@ async function ensureClient({ site, localZip, remote, onProgress = () => {}, onS
     build = r.build;
     if (!r.url) throw new Error("사이트에 올라온 클라이언트 파일이 없어요. (관리자가 아직 업로드 안 함)");
     const zipPath = path.join(dirs.cache, r.file);
-    let got = 0;
-    await net.download(r.url, zipPath, { onBytes: (n) => { got += n; onProgress({ received: got, total: r.size || 0, label: "클라이언트" }); } });
-    versionJson = await unpackClientZip(zipPath);
-    try { fs.unlinkSync(zipPath); } catch (_) {}
+    // 앞선 시도에서 다 받아 둔 zip 이 있으면 다시 받지 않는다(설치가 라이브러리·에셋 단계에서 끊겨도 처음부터 X)
+    const have = r.size && fs.existsSync(zipPath) && fs.statSync(zipPath).size === r.size;
+    if (!have) {
+      let got = 0;
+      await net.download(r.url, zipPath, { size: r.size, onBytes: (n) => { got += n; onProgress({ received: got, total: r.size || 0, label: "클라이언트" }); } });
+    }
+    try {
+      versionJson = await unpackClientZip(zipPath);
+    } catch (e) {
+      try { fs.unlinkSync(zipPath); } catch (_) {}
+      throw new Error("받은 클라이언트 파일이 깨졌어요. 다시 시도해 주세요. (" + e.message + ")");
+    }
   }
   const clientJar = path.join(dirs.versions, "KoreaCom", "KoreaCom.jar");
 
@@ -139,6 +147,10 @@ async function ensureClient({ site, localZip, remote, onProgress = () => {}, onS
     }
   }
 
+  // 전부 끝났으니 캐시 zip(이번 것·옛 빌드 것) 정리
+  try {
+    for (const n of fs.readdirSync(dirs.cache)) if (/^KoreaCom-b\d+\.zip(\.part)?$/.test(n)) fs.unlinkSync(path.join(dirs.cache, n));
+  } catch (_) {}
   return { versionJson, clientJar, build };
 }
 

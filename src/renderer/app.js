@@ -1,6 +1,9 @@
 const $ = (s) => document.querySelector(s);
-const fmtMB = (b) => (b / 1048576).toFixed(0) + " MB";
+const fmtMB = (b) => (b / 1048576).toFixed(b >= 1048576 * 100 ? 0 : 1) + " MB";
 let state = null, remote = null, busy = false, running = false;
+let lastAction = null; // 오류 카드 '다시 시도'가 다시 할 일
+
+if (window.kcc.overlay) document.body.classList.add("overlay");
 
 function toast(msg, err) {
   const t = $("#toast");
@@ -8,7 +11,16 @@ function toast(msg, err) {
   clearTimeout(t._t); t._t = setTimeout(() => t.classList.add("hidden"), 3800);
 }
 
-function avatarUrl(name) { return name ? `https://minotar.net/avatar/${encodeURIComponent(name)}/64` : ""; }
+function showError(msg, retry) {
+  lastAction = retry || null;
+  $("#err-txt").textContent = msg;
+  $("#err-retry").classList.toggle("hidden", !retry);
+  $("#err").classList.remove("hidden");
+}
+function clearError() { $("#err").classList.add("hidden"); }
+$("#err-retry").onclick = () => { const a = lastAction; clearError(); if (a) a(); };
+
+function avatarUrl(name) { return name ? `https://minotar.net/helm/${encodeURIComponent(name)}/88` : ""; }
 
 // Electron 은 window.prompt 미지원 → 자체 입력창
 function askText(title, def = "") {
@@ -24,16 +36,27 @@ function askText(title, def = "") {
   });
 }
 
-// ---- 화면 전환 ----
-document.querySelectorAll(".nav-item").forEach((b) => b.onclick = () => {
-  document.querySelectorAll(".nav-item").forEach((x) => x.classList.remove("active"));
+// ---- 탭 ----
+function moveInd() {
+  const a = document.querySelector(".tab.active"), ind = $("#tab-ind");
+  if (!a) return;
+  ind.style.left = a.offsetLeft + 10 + "px";
+  ind.style.width = a.offsetWidth - 20 + "px";
+}
+document.querySelectorAll(".tab").forEach((b) => b.onclick = () => {
+  if (b.classList.contains("active")) return;
+  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
   b.classList.add("active");
   const v = b.dataset.view;
   $("#view-home").classList.toggle("hidden", v !== "home");
   $("#view-settings").classList.toggle("hidden", v !== "settings");
+  if (window.kccScene) (v === "home" ? window.kccScene.run() : window.kccScene.stop());
+  moveInd();
 });
+window.addEventListener("resize", moveInd);
+document.fonts && document.fonts.ready.then(moveInd);
 
-// ---- 상태 로드 ----
+// ---- 상태 ----
 async function refreshState() {
   state = await window.kcc.getState();
   renderAccount();
@@ -51,12 +74,12 @@ function renderAccount() {
     el.classList.remove("empty");
     $("#avatar").src = avatarUrl(sel.name);
     $("#acc-name").textContent = sel.name;
-    $("#acc-type").textContent = sel.type === "msa" ? "정품 (Microsoft)" : sel.type === "offline" ? "오프라인" : sel.type;
+    $("#acc-type").textContent = sel.type === "msa" ? "정품 · Microsoft" : sel.type === "offline" ? "오프라인" : sel.type;
   } else {
     el.classList.add("empty");
     $("#avatar").removeAttribute("src");
-    $("#acc-name").textContent = "로그인 안 됨";
-    $("#acc-type").textContent = "계정을 추가하세요";
+    $("#acc-name").textContent = "로그인하기";
+    $("#acc-type").textContent = "Microsoft 계정으로 정품 로그인";
   }
 }
 
@@ -65,48 +88,43 @@ function renderConfig() {
   // RAM 상한: 컴퓨터 메모리에서 2GB 는 OS 몫으로 남김(최소 2GB, 최대 16GB)
   const maxRam = Math.max(2048, Math.min(16384, Math.floor(((state.totalMemMb || 8192) - 2048) / 512) * 512));
   $("#ram").max = maxRam;
-  $("#azureClientId").placeholder = c.builtInClientId ? "비우면 기본값 사용" : "예: 00000000-0000-0000-0000-000000000000";
   $("#ram").value = c.ramMb; $("#ram-val").textContent = c.ramMb + " MB";
+  $("#i-ram").textContent = (c.ramMb / 1024).toFixed(c.ramMb % 1024 ? 1 : 0) + " GB";
   $("#gameDir").value = c.gameDir || "";
   $("#javaPath").value = c.javaPath || "";
   $("#azureClientId").value = c.azureClientId || "";
   $("#site").value = c.site || "";
-  $("#closeOnLaunch").checked = !!c.closeOnLaunch;
+  document.querySelectorAll("#after button").forEach((b) => b.classList.toggle("on", b.dataset.v === c.afterLaunch));
 }
 
 // ---- 계정 메뉴 ----
-$("#acc-menu-btn").onclick = (e) => { e.stopPropagation(); buildAccMenu(); };
+$("#acc-menu-btn").onclick = (e) => { e.stopPropagation(); toggleAccMenu(); };
+$("#account").onclick = (e) => { if ($("#account").classList.contains("empty") && !e.target.closest(".menu")) doLogin(); };
 document.body.addEventListener("click", () => $("#acc-menu").classList.add("hidden"));
 
-function buildAccMenu() {
+function toggleAccMenu() {
   const m = $("#acc-menu");
+  if (!m.classList.contains("hidden")) { m.classList.add("hidden"); return; }
   m.innerHTML = "";
-  state.accounts.forEach((a) => {
+  const item = (html, cls, fn) => {
     const b = document.createElement("button");
-    b.className = "acc-row";
-    b.innerHTML = `<img src="${avatarUrl(a.name)}"><span>${a.name}</span>`;
-    if (a.uuid === state.selected) b.innerHTML += ` <span style="margin-left:auto;color:var(--accent)">●</span>`;
-    b.onclick = async (e) => { e.stopPropagation(); await window.kcc.selectAccount(a.uuid); await refreshState(); m.classList.add("hidden"); };
+    if (cls) b.className = cls;
+    b.innerHTML = html;
+    b.onclick = async (e) => { e.stopPropagation(); m.classList.add("hidden"); await fn(); };
     m.appendChild(b);
-  });
+  };
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  state.accounts.forEach((a) => item(
+    `<img src="${avatarUrl(a.name)}"><span>${esc(a.name)}</span>` + (a.uuid === state.selected ? `<i class="sel"></i>` : ""), "",
+    async () => { await window.kcc.selectAccount(a.uuid); await refreshState(); }));
   if (state.accounts.length) m.appendChild(document.createElement("hr"));
-  const add = document.createElement("button");
-  add.textContent = "+ 정품 로그인 (Microsoft)";
-  add.onclick = async (e) => { e.stopPropagation(); m.classList.add("hidden"); doLogin(); };
-  m.appendChild(add);
-  if (state.dev) {
-    const off = document.createElement("button");
-    off.textContent = "+ 오프라인 계정 (개발)";
-    off.onclick = async (e) => { e.stopPropagation(); m.classList.add("hidden"); const n = await askText("오프라인 이름", "Tester"); if (n) { await window.kcc.offlineAccount(n); await refreshState(); } };
-    m.appendChild(off);
-  }
+  item("+ 정품 로그인 (Microsoft)", "add", doLogin);
+  if (state.dev) item("+ 오프라인 계정 (개발)", "", async () => {
+    const n = await askText("오프라인 이름", "Tester");
+    if (n) { await window.kcc.offlineAccount(n); await refreshState(); }
+  });
   const sel = state.accounts.find((a) => a.uuid === state.selected);
-  if (sel) {
-    const rm = document.createElement("button");
-    rm.className = "danger"; rm.textContent = "현재 계정 제거";
-    rm.onclick = async (e) => { e.stopPropagation(); m.classList.add("hidden"); await window.kcc.removeAccount(sel.uuid); await refreshState(); };
-    m.appendChild(rm);
-  }
+  if (sel) item("이 계정 로그아웃", "danger", async () => { await window.kcc.removeAccount(sel.uuid); await refreshState(); });
   m.classList.remove("hidden");
 }
 
@@ -115,60 +133,73 @@ async function doLogin() {
   catch (e) { toast(e.message || "로그인 실패", true); }
 }
 
-// ---- 버전 확인 ----
+// ---- 버전 ----
 async function checkVersion() {
+  const btn = $("#refresh");
+  btn.classList.add("spin");
   $("#build-line").textContent = "버전 확인 중…";
   const r = await window.kcc.checkVersion();
+  btn.classList.remove("spin");
   remote = r.remote || null;
   const inst = r.installedBuild || 0;
+  $("#i-installed").textContent = inst && r.installed ? "b" + inst : "없음";
+  $("#i-latest").textContent = remote ? "b" + remote.build : "—";
+  $("#i-latest").className = remote && remote.build > inst ? "new" : remote ? "ok" : "";
   if (!r.ok) {
-    $("#build-line").innerHTML = inst ? `설치됨 b${inst} · <span class="new">사이트 연결 실패</span>` : `<span class="new">사이트에 연결할 수 없어요</span>`;
+    $("#build-line").innerHTML = inst ? `b${inst} · <span class="bad">사이트 연결 안 됨</span>` : `<span class="bad">사이트 연결 안 됨</span>`;
+    $("#build-line").title = r.error || "";
   } else if (remote && remote.build > inst) {
-    $("#build-line").innerHTML = inst ? `설치됨 b${inst} · <span class="new">새 버전 b${remote.build} 있음</span>` : `<span class="new">최신 b${remote.build} 설치 필요</span>`;
+    $("#build-line").innerHTML = inst ? `b${inst} → <span class="new">b${remote.build} 업데이트</span>` : `<span class="new">b${remote.build} 설치 필요</span>`;
   } else if (inst) {
-    $("#build-line").innerHTML = `설치됨 <span class="ok">b${inst}</span> · 최신`;
+    $("#build-line").innerHTML = `<span class="ok">b${inst}</span> · 최신`;
   } else {
-    $("#build-line").textContent = remote ? `최신 b${remote.build}` : "설치 필요";
+    $("#build-line").textContent = remote ? `b${remote.build}` : "설치 필요";
   }
   updatePlay();
 }
 
+function setProgress(p) {
+  const play = $("#play");
+  play.style.setProperty("--p", p == null ? 0 : Math.max(0, Math.min(1, p)));
+  play.classList.toggle("has-p", p != null && p > 0);
+}
+
 function updatePlay() {
   const hasAcc = state && state.accounts.length > 0;
-  const p = $("#play"), label = $("#play-label");
-  if (running) { label.textContent = "실행 중…"; p.disabled = true; p.classList.add("busy"); $("#kill").classList.remove("hidden"); return; }
-  $("#kill").classList.add("hidden");
-  p.classList.toggle("busy", busy);
-  if (busy) { p.disabled = true; return; }
-  if (!hasAcc) { label.textContent = "로그인 필요"; p.disabled = true; return; }
+  const p = $("#play"), label = $("#play-label"), sub = $("#play-sub");
+  p.classList.remove("busy", "running", "off");
+  $("#kill").classList.toggle("hidden", !running);
+  if (running) { label.textContent = "실행 중"; sub.textContent = "런처를 닫아도 게임은 계속돼요"; p.disabled = true; p.classList.add("running"); setProgress(null); return; }
+  if (busy) { p.disabled = true; p.classList.add("busy"); return; }
+  setProgress(null);
+  if (!hasAcc) { label.textContent = "로그인 필요"; sub.textContent = "오른쪽에서 계정을 추가하세요"; p.disabled = true; p.classList.add("off"); return; }
   const needInstall = !state.installed || (remote && remote.build > (state.config.installedBuild || 0));
-  label.textContent = needInstall ? "설치하고 플레이" : "플레이";
+  label.textContent = needInstall ? (state.installed ? "업데이트하고 플레이" : "설치하고 플레이") : "플레이";
+  sub.textContent = needInstall && remote ? `b${remote.build}` : "";
   p.disabled = false;
 }
 
 // ---- 런처 업데이트 ----
-let lastUpd = null;
+let lastUpd = null, checkingByHand = false;
 function renderUpdater(u) {
   lastUpd = u || { status: "idle" };
-  const box = $("#upd"), txt = $("#upd-txt"), btn = $("#upd-btn");
-  btn.classList.add("hidden");
+  const pill = $("#upd-pill");
+  pill.disabled = false;
   switch (lastUpd.status) {
     case "downloading":
-      txt.innerHTML = `런처 v${lastUpd.version || ""} 받는 중 <small>${lastUpd.percent || 0}%</small>`; break;
+      pill.textContent = `런처 업데이트 받는 중 ${lastUpd.percent || 0}%`; pill.disabled = true; pill.onclick = null; break;
     case "ready":
-      txt.innerHTML = `런처 v${lastUpd.version} 준비됨 <small>${running ? "게임을 끄면 다시 시작할 수 있어요" : "닫을 때도 자동으로 적용돼요"}</small>`;
-      btn.textContent = "다시 시작해서 업데이트"; btn.classList.remove("hidden"); btn.disabled = running;
-      btn.onclick = async () => { const r = await window.kcc.installLauncherUpdate(); if (!r.ok) toast(r.error, true); };
+      pill.textContent = `런처 v${lastUpd.version} 적용하기`;
+      pill.onclick = async () => { const r = await window.kcc.installLauncherUpdate(); if (!r.ok) toast(r.error, true); };
       break;
     case "manual":
-      txt.innerHTML = `런처 새 버전 v${lastUpd.version} <small>이 런처는 자동 업데이트가 안 되는 형태예요</small>`;
-      btn.textContent = "받으러 가기"; btn.classList.remove("hidden"); btn.disabled = false;
-      btn.onclick = () => window.kcc.openReleases(lastUpd.url);
+      pill.textContent = `런처 v${lastUpd.version} 받기`;
+      pill.onclick = () => window.kcc.openReleases(lastUpd.url);
       break;
     default:
-      box.classList.add("hidden"); return;
+      pill.classList.add("hidden"); return;
   }
-  box.classList.remove("hidden");
+  pill.classList.remove("hidden");
 }
 window.kcc.on("updater", (u) => {
   const was = lastUpd && lastUpd.status;
@@ -180,87 +211,118 @@ window.kcc.on("updater", (u) => {
     if (u.status === "error") toast("업데이트 확인 실패: " + (u.error || ""), true);
   }
 });
-let checkingByHand = false;
-// 결과는 위 "updater" 이벤트로 온다(포터블·개발 실행도 같은 이벤트)
 $("#check-launcher").onclick = () => { checkingByHand = true; window.kcc.checkLauncherUpdate(); };
 
-// ---- 진행률/로그 이벤트 ----
-window.kcc.on("stage", (s) => { $("#stage").textContent = s; });
-// 속도: 최근 1초 남짓 받은 양
+// ---- 진행률·로그 ----
+window.kcc.on("stage", (s) => { if (s !== "오류") $("#stage").textContent = s; if (busy) $("#play-label").textContent = s; });
 let speedMark = { t: 0, bytes: 0 }, speedTxt = "";
 window.kcc.on("progress", (p) => {
-  const pct = p.total ? Math.min(100, (p.received / p.total) * 100) : 0;
+  const total = p.total || 0, received = p.received || 0;
+  const pct = total ? Math.min(100, (received / total) * 100) : 0;
   const now = performance.now();
-  if (now - speedMark.t > 1000 || p.received < speedMark.bytes) {
-    if (speedMark.t && p.received >= speedMark.bytes) speedTxt = `${((p.received - speedMark.bytes) / 1048576 / ((now - speedMark.t) / 1000)).toFixed(1)} MB/s`;
-    speedMark = { t: now, bytes: p.received };
+  if (now - speedMark.t > 1000 || received < speedMark.bytes) {
+    if (speedMark.t && received >= speedMark.bytes) speedTxt = `${((received - speedMark.bytes) / 1048576 / ((now - speedMark.t) / 1000)).toFixed(1)} MB/s`;
+    speedMark = { t: now, bytes: received };
   }
-  $("#bar-fill").style.width = pct + "%";
-  const sp = speedTxt ? ` · ${speedTxt}` : "";
-  $("#prog-txt").textContent = p.total ? `${(p.label || "")} ${fmtMB(p.received)} / ${fmtMB(p.total)} (${pct.toFixed(0)}%)${sp}` : `${p.label || ""} ${fmtMB(p.received)}${sp}`;
+  if (busy) {
+    setProgress(total ? pct / 100 : null);
+    $("#play-sub").textContent = total ? `${pct.toFixed(0)}%` : fmtMB(received);
+    if (p.phase) $("#play-label").textContent = p.phase;
+  }
+  const what = p.label || p.phase || "";
+  $("#prog-txt").textContent = (total ? `${what} ${fmtMB(received)} / ${fmtMB(total)}` : `${what} ${fmtMB(received)}`) + (speedTxt ? ` · ${speedTxt}` : "");
 });
+
+const LOG_MAX = 120000;
+let logBuf = "";
+function renderLog() {
+  const log = $("#log");
+  const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  log.textContent = logBuf;
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+let logPending = false;
 window.kcc.on("log", (l) => {
-  const log = $("#log"); log.textContent += l;
-  if (log.textContent.length > 60000) log.textContent = log.textContent.slice(-50000);
-  log.scrollTop = log.scrollHeight;
+  logBuf += l;
+  if (logBuf.length > LOG_MAX) logBuf = logBuf.slice(-LOG_MAX + 20000);
+  if (!logPending && $("#drawer").classList.contains("open")) { logPending = true; requestAnimationFrame(() => { logPending = false; renderLog(); }); }
 });
-window.kcc.on("game:started", () => { running = true; busy = false; updatePlay(); renderUpdater(lastUpd); $("#stage").textContent = "게임이 실행됐어요"; });
+function openLog(open) {
+  $("#drawer").classList.toggle("open", open);
+  if (open) { renderLog(); const log = $("#log"); log.scrollTop = log.scrollHeight; }
+}
+$("#toggle-log").onclick = () => openLog(!$("#drawer").classList.contains("open"));
+$("#close-log").onclick = () => openLog(false);
+$("#open-log").onclick = () => window.kcc.openGameLog();
+
+window.kcc.on("game:started", () => {
+  running = true; busy = false; clearError(); updatePlay();
+  $("#stage").textContent = "게임이 켜졌어요"; $("#prog-txt").textContent = "";
+});
 window.kcc.on("game:exit", (e) => {
   const code = typeof e === "object" ? e.code : e;
-  running = false; busy = false; updatePlay(); renderUpdater(lastUpd);
-  $("#bar-fill").style.width = "0%"; $("#prog-txt").textContent = "";
+  running = false; busy = false; updatePlay();
+  $("#prog-txt").textContent = "";
   if (code === 0 || code === null) { $("#stage").textContent = "게임 종료"; return; }
   // 비정상 종료: 로그를 펼쳐 마지막 오류가 보이게
   $("#stage").textContent = `게임이 비정상 종료됐어요 (코드 ${code})`;
-  const log = $("#log");
-  log.classList.remove("hidden"); $("#toggle-log").textContent = "숨기기"; log.scrollTop = log.scrollHeight;
-  toast("게임이 튕겼어요. 문의할 땐 '로그 파일'을 보내 주세요.", true);
+  showError("게임이 튕겼어요. 문의할 땐 로그 파일을 같이 보내 주세요.", null);
+  openLog(true);
 });
-$("#open-log").onclick = () => window.kcc.openGameLog();
 
 // ---- 플레이 ----
-$("#play").onclick = async () => {
-  busy = true; updatePlay(); $("#log").textContent = ""; $("#stage").textContent = "시작…";
+async function play() {
+  clearError();
+  busy = true; updatePlay(); setProgress(null);
+  logBuf = ""; renderLog();
+  $("#play-label").textContent = "준비 중"; $("#play-sub").textContent = "";
+  $("#stage").textContent = "시작하는 중…"; $("#prog-txt").textContent = "";
+  speedMark = { t: 0, bytes: 0 }; speedTxt = "";
   const r = await window.kcc.launch();
-  if (!r.ok) { busy = false; updatePlay(); $("#stage").textContent = "—"; toast(r.error || "실행 실패", true); }
-};
+  if (!r.ok) {
+    busy = false; updatePlay();
+    $("#stage").innerHTML = "&nbsp;"; $("#prog-txt").textContent = "";
+    showError(r.error || "실행하지 못했어요.", play);
+    checkVersion();
+  }
+}
+$("#play").onclick = play;
 $("#kill").onclick = () => window.kcc.kill();
 $("#refresh").onclick = () => checkVersion();
-
-// ---- 로그 토글 ----
-$("#toggle-log").onclick = () => {
-  const log = $("#log"), hidden = log.classList.toggle("hidden");
-  $("#toggle-log").textContent = hidden ? "보이기" : "숨기기";
-};
-
-// ---- 설정 ----
-$("#ram").oninput = () => $("#ram-val").textContent = $("#ram").value + " MB";
-$("#pick-java").onclick = async () => { const p = await window.kcc.pickJava(); if (p) $("#javaPath").value = p; };
 $("#open-gamedir").onclick = () => window.kcc.openGameDir();
-$("#save-settings").onclick = async () => {
-  await window.kcc.setConfig({
-    ramMb: parseInt($("#ram").value, 10),
-    gameDir: $("#gameDir").value.trim(),
-    javaPath: $("#javaPath").value.trim(),
-    azureClientId: $("#azureClientId").value.trim(),
-    site: $("#site").value.trim() || "https://korcomclient.xyz",
-    closeOnLaunch: $("#closeOnLaunch").checked,
-  });
-  $("#saved").classList.remove("hidden"); setTimeout(() => $("#saved").classList.add("hidden"), 1600);
-  await refreshState();
-};
-$("#reinstall").onclick = async () => {
-  busy = true; updatePlay(); $("#log").classList.remove("hidden"); $("#toggle-log").textContent = "숨기기";
-  const r = await window.kcc.install({});
-  busy = false; await refreshState();
-  toast(r.ok ? `설치 완료 (b${r.build})` : (r.error || "설치 실패"), !r.ok);
-};
-$("#import-zip").onclick = async () => {
-  const zip = await window.kcc.pickZip(); if (!zip) return;
-  busy = true; updatePlay();
-  const r = await window.kcc.install({ localZip: zip });
-  busy = false; await refreshState();
-  toast(r.ok ? `설치 완료 (b${r.build || "?"})` : (r.error || "설치 실패"), !r.ok);
-};
+$("#open-gamedir2").onclick = () => window.kcc.openGameDir();
+$("#open-site").onclick = () => window.kcc.openExternal((state && state.config.site) || "https://korcomclient.xyz");
 
-refreshState();
+// ---- 설정(바꾸면 바로 저장) ----
+async function save(patch) {
+  await window.kcc.setConfig(patch);
+  state = await window.kcc.getState();
+  renderConfig(); updatePlay();
+}
+$("#ram").oninput = () => { $("#ram-val").textContent = $("#ram").value + " MB"; };
+$("#ram").onchange = () => save({ ramMb: parseInt($("#ram").value, 10) });
+document.querySelectorAll("#after button").forEach((b) => b.onclick = () => save({ afterLaunch: b.dataset.v }));
+for (const id of ["gameDir", "javaPath", "azureClientId", "site"]) {
+  $("#" + id).onchange = () => {
+    let v = $("#" + id).value.trim();
+    if (id === "site" && !v) v = "https://korcomclient.xyz";
+    save({ [id]: v }).then(() => { if (id === "site") checkVersion(); toast("저장됨"); });
+  };
+}
+$("#pick-java").onclick = async () => { const p = await window.kcc.pickJava(); if (p) { $("#javaPath").value = p; save({ javaPath: p }); } };
+
+async function install(opts) {
+  if (busy || running) return;
+  document.querySelector('.tab[data-view="home"]').click();
+  clearError();
+  busy = true; updatePlay(); setProgress(null);
+  $("#play-label").textContent = "설치 중";
+  const r = await window.kcc.install(opts);
+  busy = false; await refreshState();
+  if (r.ok) { toast(`설치 완료 (b${r.build || "?"})`); $("#stage").textContent = "설치 완료"; }
+  else showError(r.error || "설치하지 못했어요.", () => install(opts));
+}
+$("#reinstall").onclick = () => install({});
+$("#import-zip").onclick = async () => { const zip = await window.kcc.pickZip(); if (zip) install({ localZip: zip }); };
+
+refreshState().then(moveInd);
